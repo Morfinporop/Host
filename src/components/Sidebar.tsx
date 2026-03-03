@@ -1,63 +1,84 @@
-import { Server, LayoutDashboard, Terminal, FolderOpen, Package, Users, Settings, CreditCard, Download, Shield } from 'lucide-react';
+import { Server, Page } from '../App';
 
-interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+interface Props {
+  currentPage: Page;
+  onNavigate: (page: Page) => void;
+  servers: Server[];
+  selectedServer: string | null;
+  onSelectServer: (id: string) => void;
 }
 
-const menuItems = [
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Дашборд' },
-  { id: 'servers', icon: Server, label: 'Серверы' },
-  { id: 'console', icon: Terminal, label: 'Консоль' },
-  { id: 'files', icon: FolderOpen, label: 'Файлы' },
-  { id: 'addons', icon: Package, label: 'Аддоны' },
-  { id: 'players', icon: Users, label: 'Игроки' },
-  { id: 'settings', icon: Settings, label: 'Настройки' },
-  { id: 'install', icon: Download, label: 'Установка' },
-  { id: 'tariffs', icon: CreditCard, label: 'Тарифы' },
+const menuItems: { id: Page; label: string; icon: string }[] = [
+  { id: 'dashboard', label: 'Дашборд', icon: '📊' },
+  { id: 'servers', label: 'Серверы', icon: '🖥️' },
+  { id: 'console', label: 'Консоль', icon: '💻' },
+  { id: 'files', label: 'Файлы', icon: '📁' },
+  { id: 'players', label: 'Игроки', icon: '👥' },
+  { id: 'settings', label: 'Настройки', icon: '⚙️' },
+  { id: 'install', label: 'Установка', icon: '📥' },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+export function Sidebar({ currentPage, onNavigate, servers, selectedServer, onSelectServer }: Props) {
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
-      <div className="p-4 border-b border-gray-800">
+    <aside className="fixed left-0 top-0 bottom-0 w-72 glass border-r border-zinc-800/50 flex flex-col z-50">
+      <div className="p-6 border-b border-zinc-800/50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
-            <Shield className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xl">
+            🎮
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">GMod Host</h1>
-            <p className="text-xs text-gray-500">Panel v2.0</p>
+            <h1 className="font-bold text-lg text-white">GMod Panel</h1>
+            <p className="text-xs text-zinc-500">Управление серверами</p>
           </div>
         </div>
       </div>
-      
-      <nav className="flex-1 p-3 space-y-1">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-                isActive 
-                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-sm font-medium">{item.label}</span>
-            </button>
-          );
-        })}
+
+      {servers.length > 0 && (
+        <div className="p-4 border-b border-zinc-800/50">
+          <label className="text-xs text-zinc-500 mb-2 block">Активный сервер</label>
+          <select
+            value={selectedServer || ''}
+            onChange={(e) => onSelectServer(e.target.value)}
+            className="w-full bg-zinc-900/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm"
+          >
+            {servers.map(server => (
+              <option key={server.id} value={server.id}>
+                {server.name} {server.running ? '🟢' : '⚫'}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <nav className="flex-1 p-4 overflow-y-auto">
+        <ul className="space-y-1">
+          {menuItems.map(item => (
+            <li key={item.id}>
+              <button
+                onClick={() => onNavigate(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                  currentPage === item.id
+                    ? 'bg-gradient-to-r from-blue-600/20 to-purple-600/20 text-white border border-blue-500/30'
+                    : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-white'
+                }`}
+              >
+                <span className="text-lg">{item.icon}</span>
+                <span className="font-medium">{item.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </nav>
-      
-      <div className="p-4 border-t border-gray-800">
-        <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-lg p-3 border border-orange-500/30">
-          <p className="text-xs text-orange-300 font-medium">Текущий тариф</p>
-          <p className="text-white font-bold">Premium</p>
-          <p className="text-xs text-gray-400 mt-1">3 сервера активно</p>
+
+      <div className="p-4 border-t border-zinc-800/50">
+        <div className="glass rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-zinc-400">Система</span>
+          </div>
+          <p className="text-xs text-zinc-500">
+            Railway Node.js Environment
+          </p>
         </div>
       </div>
     </aside>

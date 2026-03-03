@@ -1,73 +1,102 @@
-import { useState } from 'react';
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import Servers from './components/Servers';
-import Console from './components/Console';
-import FileManager from './components/FileManager';
-import Addons from './components/Addons';
-import Players from './components/Players';
-import Settings from './components/Settings';
-import Install from './components/Install';
-import Tariffs from './components/Tariffs';
-import { Bell, User, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './components/Dashboard';
+import { Servers } from './components/Servers';
+import { Console } from './components/Console';
+import { FileManager } from './components/FileManager';
+import { Players } from './components/Players';
+import { Settings } from './components/Settings';
+import { Install } from './components/Install';
+import { api } from './api';
+
+export interface Server {
+  id: string;
+  name: string;
+  port: number;
+  maxPlayers: number;
+  gamemode: string;
+  map: string;
+  tickrate: number;
+  running: boolean;
+  installed: boolean;
+  hostname?: string;
+  rconPassword?: string;
+  svPassword?: string;
+  gslt?: string;
+  workshopCollection?: string;
+  fastdl?: string;
+  loadingUrl?: string;
+}
+
+export type Page = 'dashboard' | 'servers' | 'console' | 'files' | 'players' | 'settings' | 'install';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [page, setPage] = useState<Page>('dashboard');
+  const [servers, setServers] = useState<Server[]>([]);
+  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard': return <Dashboard />;
-      case 'servers': return <Servers />;
-      case 'console': return <Console />;
-      case 'files': return <FileManager />;
-      case 'addons': return <Addons />;
-      case 'players': return <Players />;
-      case 'settings': return <Settings />;
-      case 'install': return <Install />;
-      case 'tariffs': return <Tariffs />;
-      default: return <Dashboard />;
+  const loadServers = async () => {
+    try {
+      const data = await api.getServers();
+      setServers(data);
+      if (data.length > 0 && !selectedServer) {
+        setSelectedServer(data[0].id);
+      }
+    } catch (e) {
+      console.error('Failed to load servers:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadServers();
+    const interval = setInterval(loadServers, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const currentServer = servers.find(s => s.id === selectedServer) || null;
+
+  const renderPage = () => {
+    switch (page) {
+      case 'dashboard':
+        return <Dashboard servers={servers} onSelectServer={(id) => { setSelectedServer(id); setPage('console'); }} />;
+      case 'servers':
+        return <Servers servers={servers} selectedServer={selectedServer} onSelect={setSelectedServer} onRefresh={loadServers} />;
+      case 'console':
+        return <Console server={currentServer} />;
+      case 'files':
+        return <FileManager server={currentServer} />;
+      case 'players':
+        return <Players server={currentServer} />;
+      case 'settings':
+        return <Settings server={currentServer} onUpdate={loadServers} />;
+      case 'install':
+        return <Install server={currentServer} onComplete={loadServers} />;
+      default:
+        return <Dashboard servers={servers} onSelectServer={(id) => { setSelectedServer(id); setPage('console'); }} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      <div className="flex-1 flex flex-col">
-        <header className="h-16 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input
-                type="text"
-                placeholder="Поиск..."
-                className="bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 w-64"
-              />
-            </div>
+    <div className="flex min-h-screen bg-[#0a0a0f]">
+      <Sidebar 
+        currentPage={page} 
+        onNavigate={setPage} 
+        servers={servers}
+        selectedServer={selectedServer}
+        onSelectServer={setSelectedServer}
+      />
+      <main className="flex-1 ml-72 p-6">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
-          
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 text-gray-400 hover:text-white transition">
-              <Bell className="w-6 h-6" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full"></span>
-            </button>
-            
-            <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-white">Admin</p>
-                <p className="text-xs text-gray-500">Premium</p>
-              </div>
-            </div>
-          </div>
-        </header>
-        
-        <main className="flex-1 p-6 overflow-auto">
-          {renderContent()}
-        </main>
-      </div>
+        ) : (
+          renderPage()
+        )}
+      </main>
     </div>
   );
 }

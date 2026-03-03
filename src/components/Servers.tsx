@@ -1,212 +1,279 @@
-import { Play, Square, RotateCcw, Users, Cpu, HardDrive, Map, Gamepad2, Copy } from 'lucide-react';
-import { useServerStore } from '../store/serverStore';
+import { useState } from 'react';
+import { Server } from '../App';
+import { api } from '../api';
 
-export default function Servers() {
-  const { servers, selectedServer, setSelectedServer, updateServerStatus, addConsoleLog } = useServerStore();
+interface Props {
+  servers: Server[];
+  selectedServer: string | null;
+  onSelect: (id: string) => void;
+  onRefresh: () => void;
+}
 
-  const handleStart = (id: string) => {
-    updateServerStatus(id, 'starting');
-    addConsoleLog({ type: 'info', message: 'Starting server...' });
-    setTimeout(() => {
-      updateServerStatus(id, 'online');
-      addConsoleLog({ type: 'success', message: 'Server started successfully!' });
-    }, 2000);
+export function Servers({ servers, selectedServer, onSelect, onRefresh }: Props) {
+  const [creating, setCreating] = useState(false);
+  const [newServer, setNewServer] = useState({
+    name: '',
+    port: 27015,
+    maxPlayers: 32,
+    gamemode: 'sandbox',
+    map: 'gm_flatgrass',
+    tickrate: 66
+  });
+
+  const handleCreate = async () => {
+    if (!newServer.name) return;
+    
+    try {
+      await api.createServer(newServer);
+      setCreating(false);
+      setNewServer({
+        name: '',
+        port: 27015,
+        maxPlayers: 32,
+        gamemode: 'sandbox',
+        map: 'gm_flatgrass',
+        tickrate: 66
+      });
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleStop = (id: string) => {
-    updateServerStatus(id, 'stopping');
-    addConsoleLog({ type: 'warning', message: 'Stopping server...' });
-    setTimeout(() => {
-      updateServerStatus(id, 'offline');
-      addConsoleLog({ type: 'info', message: 'Server stopped.' });
-    }, 1500);
+  const handleDelete = async (id: string) => {
+    if (!confirm('Удалить сервер? Это действие нельзя отменить.')) return;
+    
+    try {
+      await api.deleteServer(id);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleRestart = (id: string) => {
-    updateServerStatus(id, 'stopping');
-    addConsoleLog({ type: 'warning', message: 'Restarting server...' });
-    setTimeout(() => {
-      updateServerStatus(id, 'starting');
-      setTimeout(() => {
-        updateServerStatus(id, 'online');
-        addConsoleLog({ type: 'success', message: 'Server restarted successfully!' });
-      }, 2000);
-    }, 1500);
+  const handleStart = async (id: string) => {
+    try {
+      await api.startServer(id);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleStop = async (id: string) => {
+    try {
+      await api.stopServer(id);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRestart = async (id: string) => {
+    try {
+      await api.restartServer(id);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="animate-fade-in">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-white">Управление серверами</h2>
-          <p className="text-gray-400">Запуск, остановка и мониторинг серверов</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Серверы</h1>
+          <p className="text-zinc-500">Управление игровыми серверами</p>
         </div>
-        <button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2">
-          <Gamepad2 className="w-5 h-5" />
+        <button
+          onClick={() => setCreating(true)}
+          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl font-medium text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+        >
+          <span>➕</span>
           Создать сервер
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-3">
-          {servers.map((server) => (
-            <div
-              key={server.id}
-              onClick={() => setSelectedServer(server)}
-              className={`bg-gray-800/50 border rounded-xl p-4 cursor-pointer transition-all ${
-                selectedServer?.id === server.id 
-                  ? 'border-orange-500 ring-1 ring-orange-500/50' 
-                  : 'border-gray-700 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2.5 h-2.5 rounded-full ${
-                    server.status === 'online' ? 'bg-green-500' : 
-                    server.status === 'offline' ? 'bg-gray-500' :
-                    'bg-yellow-500 animate-pulse'
-                  }`}></div>
-                  <span className="font-medium text-white">{server.name}</span>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  server.status === 'online' ? 'bg-green-500/20 text-green-400' :
-                  server.status === 'offline' ? 'bg-gray-500/20 text-gray-400' :
-                  'bg-yellow-500/20 text-yellow-400'
-                }`}>
-                  {server.status === 'online' ? 'Онлайн' : 
-                   server.status === 'offline' ? 'Оффлайн' :
-                   server.status === 'starting' ? 'Запуск...' : 'Остановка...'}
-                </span>
+      {creating && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass rounded-2xl p-6 w-full max-w-lg border border-zinc-700/50 animate-fade-in">
+            <h2 className="text-xl font-bold text-white mb-6">Новый сервер</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Название</label>
+                <input
+                  type="text"
+                  value={newServer.name}
+                  onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
+                  placeholder="Мой GMod Сервер"
+                  className="w-full"
+                />
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-400">
-                <span className="flex items-center gap-1">
-                  <Users className="w-4 h-4" />
-                  {server.players}/{server.maxPlayers}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Map className="w-4 h-4" />
-                  {server.gamemode}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {selectedServer && (
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-xl font-bold text-white">{selectedServer.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-gray-400">{selectedServer.ip}:{selectedServer.port}</span>
-                    <button 
-                      onClick={() => copyToClipboard(`${selectedServer.ip}:${selectedServer.port}`)}
-                      className="text-gray-500 hover:text-white transition"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <label className="block text-sm text-zinc-400 mb-2">Порт</label>
+                  <input
+                    type="number"
+                    value={newServer.port}
+                    onChange={(e) => setNewServer({ ...newServer, port: parseInt(e.target.value) })}
+                    className="w-full"
+                  />
                 </div>
-                <div className="flex gap-2">
-                  {selectedServer.status === 'offline' ? (
-                    <button 
-                      onClick={() => handleStart(selectedServer.id)}
-                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
-                    >
-                      <Play className="w-5 h-5" />
-                      Запустить
-                    </button>
-                  ) : selectedServer.status === 'online' ? (
-                    <>
-                      <button 
-                        onClick={() => handleStop(selectedServer.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
-                      >
-                        <Square className="w-5 h-5" />
-                        Остановить
-                      </button>
-                      <button 
-                        onClick={() => handleRestart(selectedServer.id)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
-                      >
-                        <RotateCcw className="w-5 h-5" />
-                        Рестарт
-                      </button>
-                    </>
-                  ) : (
-                    <button disabled className="bg-gray-600 text-gray-400 px-4 py-2 rounded-lg font-medium flex items-center gap-2">
-                      <RotateCcw className="w-5 h-5 animate-spin" />
-                      Подождите...
-                    </button>
-                  )}
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-2">Макс. игроков</label>
+                  <input
+                    type="number"
+                    value={newServer.maxPlayers}
+                    onChange={(e) => setNewServer({ ...newServer, maxPlayers: parseInt(e.target.value) })}
+                    className="w-full"
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-gray-900/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-                    <Users className="w-4 h-4" />
-                    Игроки
-                  </div>
-                  <p className="text-xl font-bold text-white">{selectedServer.players}/{selectedServer.maxPlayers}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-2">Gamemode</label>
+                  <input
+                    type="text"
+                    value={newServer.gamemode}
+                    onChange={(e) => setNewServer({ ...newServer, gamemode: e.target.value })}
+                    placeholder="sandbox, darkrp, ttt..."
+                    className="w-full"
+                  />
                 </div>
-                <div className="bg-gray-900/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-                    <Cpu className="w-4 h-4" />
-                    CPU
-                  </div>
-                  <p className="text-xl font-bold text-white">{selectedServer.cpu}%</p>
-                </div>
-                <div className="bg-gray-900/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-                    <HardDrive className="w-4 h-4" />
-                    RAM
-                  </div>
-                  <p className="text-xl font-bold text-white">{selectedServer.ram}/{selectedServer.ramMax} MB</p>
-                </div>
-                <div className="bg-gray-900/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-                    <Map className="w-4 h-4" />
-                    Карта
-                  </div>
-                  <p className="text-sm font-bold text-white truncate">{selectedServer.map}</p>
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-2">Карта</label>
+                  <input
+                    type="text"
+                    value={newServer.map}
+                    onChange={(e) => setNewServer({ ...newServer, map: e.target.value })}
+                    placeholder="gm_flatgrass, gm_construct..."
+                    className="w-full"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
-                  <span className="text-gray-400">Gamemode</span>
-                  <span className="text-white font-medium">{selectedServer.gamemode}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
-                  <span className="text-gray-400">Tickrate</span>
-                  <span className="text-white font-medium">{selectedServer.tickrate}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
-                  <span className="text-gray-400">Uptime</span>
-                  <span className="text-white font-medium">{Math.floor(selectedServer.uptime / 3600)} часов</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
-                  <span className="text-gray-400">Подключение</span>
-                  <div className="flex items-center gap-2">
-                    <code className="text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
-                      connect {selectedServer.ip}:{selectedServer.port}
-                    </code>
-                    <button 
-                      onClick={() => copyToClipboard(`connect ${selectedServer.ip}:${selectedServer.port}`)}
-                      className="text-gray-500 hover:text-white transition"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Tickrate</label>
+                <input
+                  type="number"
+                  value={newServer.tickrate}
+                  onChange={(e) => setNewServer({ ...newServer, tickrate: parseInt(e.target.value) })}
+                  placeholder="33, 66, 100..."
+                  className="w-full"
+                />
               </div>
             </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setCreating(false)}
+                className="flex-1 px-4 py-3 bg-zinc-800 rounded-xl text-zinc-300 hover:bg-zinc-700 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleCreate}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl text-white hover:opacity-90 transition-opacity"
+              >
+                Создать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-4">
+        {servers.map(server => (
+          <div
+            key={server.id}
+            className={`glass rounded-2xl p-6 border transition-all cursor-pointer ${
+              selectedServer === server.id
+                ? 'border-blue-500/50 bg-blue-500/5'
+                : 'border-zinc-800/50 hover:border-zinc-700/50'
+            }`}
+            onClick={() => onSelect(server.id)}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`w-4 h-4 rounded-full ${server.running ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
+                <div>
+                  <h3 className="text-xl font-semibold text-white">{server.name}</h3>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-zinc-500">
+                    <span>📍 Порт: {server.port}</span>
+                    <span>🗺️ {server.map}</span>
+                    <span>🎮 {server.gamemode}</span>
+                    <span>⚡ {server.tickrate} tick</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {server.installed ? (
+                  <>
+                    {server.running ? (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRestart(server.id); }}
+                          className="p-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 transition-colors"
+                          title="Перезапустить"
+                        >
+                          🔄
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleStop(server.id); }}
+                          className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                          title="Остановить"
+                        >
+                          ⏹️
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleStart(server.id); }}
+                        className="p-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
+                        title="Запустить"
+                      >
+                        ▶️
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-yellow-500 bg-yellow-500/10 px-3 py-1 rounded-full">
+                    Требуется установка
+                  </span>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(server.id); }}
+                  className="p-2 rounded-lg bg-zinc-800 text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+                  title="Удалить"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${server.running ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                <span className="text-sm text-zinc-400">
+                  {server.running ? 'Работает' : 'Остановлен'}
+                </span>
+              </div>
+              <div className="text-sm text-zinc-500">
+                ID: {server.id}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {servers.length === 0 && (
+          <div className="glass rounded-2xl p-12 text-center border border-zinc-800/50">
+            <div className="text-6xl mb-4">🎮</div>
+            <h3 className="text-xl font-semibold text-white mb-2">Нет серверов</h3>
+            <p className="text-zinc-500">Создайте первый сервер, чтобы начать</p>
           </div>
         )}
       </div>

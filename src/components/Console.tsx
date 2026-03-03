@@ -1,133 +1,179 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Download, AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
-import { useServerStore } from '../store/serverStore';
+import { useState, useEffect, useRef } from 'react';
+import { Server } from '../App';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { api } from '../api';
 
-export default function Console() {
-  const { consoleLogs, addConsoleLog, selectedServer } = useServerStore();
+interface Props {
+  server: Server | null;
+}
+
+export function Console({ server }: Props) {
   const [command, setCommand] = useState('');
-  const consoleRef = useRef<HTMLDivElement>(null);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  const { logs, connected, sendCommand, clearLogs } = useWebSocket(server?.id || null);
 
   useEffect(() => {
-    if (consoleRef.current) {
-      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
-    }
-  }, [consoleLogs]);
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
-  const handleSendCommand = () => {
-    if (!command.trim()) return;
-    
-    addConsoleLog({ type: 'info', message: `> ${command}` });
-    
-    setTimeout(() => {
-      if (command.toLowerCase() === 'status') {
-        addConsoleLog({ type: 'success', message: `Server Status: Online | Players: ${selectedServer?.players || 0}/${selectedServer?.maxPlayers || 0}` });
-      } else if (command.toLowerCase() === 'help') {
-        addConsoleLog({ type: 'info', message: 'Available commands: status, help, map, kick, ban, say, changelevel, sv_password' });
-      } else if (command.toLowerCase().startsWith('say ')) {
-        addConsoleLog({ type: 'success', message: `Console: ${command.substring(4)}` });
-      } else if (command.toLowerCase().startsWith('changelevel ')) {
-        addConsoleLog({ type: 'warning', message: `Changing level to: ${command.substring(12)}...` });
-        setTimeout(() => {
-          addConsoleLog({ type: 'success', message: 'Level changed successfully!' });
-        }, 1500);
-      } else {
-        addConsoleLog({ type: 'info', message: `Command executed: ${command}` });
-      }
-    }, 100);
-    
+  useEffect(() => {
+    if (server?.id) {
+      api.getLogs(server.id).then(existingLogs => {
+        if (Array.isArray(existingLogs)) {
+        }
+      }).catch(() => {});
+    }
+  }, [server?.id]);
+
+  const handleSend = async () => {
+    if (!command.trim() || !server) return;
+
+    setCommandHistory(prev => [...prev, command]);
+    setHistoryIndex(-1);
+
+    if (connected) {
+      sendCommand(command);
+    } else {
+      await api.sendCommand(server.id, command);
+    }
+
     setCommand('');
   };
 
-  const getLogIcon = (type: string) => {
-    switch (type) {
-      case 'error': return <AlertCircle className="w-4 h-4 text-red-400" />;
-      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
-      case 'success': return <CheckCircle className="w-4 h-4 text-green-400" />;
-      default: return <Info className="w-4 h-4 text-blue-400" />;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSend();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        const newIndex = historyIndex < commandHistory.length - 1 ? historyIndex + 1 : historyIndex;
+        setHistoryIndex(newIndex);
+        setCommand(commandHistory[commandHistory.length - 1 - newIndex] || '');
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setCommand(commandHistory[commandHistory.length - 1 - newIndex] || '');
+      } else {
+        setHistoryIndex(-1);
+        setCommand('');
+      }
     }
   };
 
-  const getLogColor = (type: string) => {
-    switch (type) {
-      case 'error': return 'text-red-400';
-      case 'warning': return 'text-yellow-400';
-      case 'success': return 'text-green-400';
-      default: return 'text-gray-300';
-    }
-  };
+  const quickCommands = [
+    { label: 'status', cmd: 'status' },
+    { label: 'changelevel', cmd: 'changelevel ' },
+    { label: 'kick', cmd: 'kick ' },
+    { label: 'ban', cmd: 'ban ' },
+    { label: 'rcon', cmd: 'rcon ' },
+    { label: 'lua_run', cmd: 'lua_run ' },
+  ];
+
+  if (!server) {
+    return (
+      <div className="animate-fade-in flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-6xl mb-4">💻</div>
+          <h3 className="text-xl font-semibold text-white mb-2">Выберите сервер</h3>
+          <p className="text-zinc-500">Выберите сервер в боковой панели для просмотра консоли</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="animate-fade-in h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-white">Консоль сервера</h2>
-          <p className="text-gray-400">
-            {selectedServer ? `${selectedServer.name} - ${selectedServer.ip}:${selectedServer.port}` : 'Выберите сервер'}
-          </p>
+          <h1 className="text-3xl font-bold text-white mb-2">Консоль</h1>
+          <p className="text-zinc-500">{server.name}</p>
         </div>
-        <div className="flex gap-2">
-          <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            Скачать логи
-          </button>
-          <button className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-lg transition flex items-center gap-2">
-            <Trash2 className="w-5 h-5" />
-            Очистить
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${
+            connected ? 'bg-green-500/10 text-green-400' : 'bg-zinc-800 text-zinc-400'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
+            <span className="text-sm">{connected ? 'Подключено' : 'Отключено'}</span>
+          </div>
+          <button
+            onClick={clearLogs}
+            className="px-4 py-2 bg-zinc-800 rounded-xl text-zinc-300 hover:bg-zinc-700 transition-colors text-sm"
+          >
+            🗑️ Очистить
           </button>
         </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-        <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          </div>
-          <span className="text-sm text-gray-400">srcds_console</span>
-        </div>
-        
-        <div 
-          ref={consoleRef}
-          className="h-[500px] overflow-y-auto p-4 font-mono text-sm space-y-1"
-        >
-          {consoleLogs.map((log) => (
-            <div key={log.id} className="flex items-start gap-2">
-              <span className="text-gray-500">[{log.time}]</span>
-              {getLogIcon(log.type)}
-              <span className={getLogColor(log.type)}>{log.message}</span>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {quickCommands.map(qc => (
+          <button
+            key={qc.label}
+            onClick={() => {
+              setCommand(qc.cmd);
+              inputRef.current?.focus();
+            }}
+            className="px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
+          >
+            {qc.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 glass rounded-2xl border border-zinc-800/50 overflow-hidden flex flex-col min-h-[500px]">
+        <div className="flex-1 overflow-y-auto p-4 font-mono text-sm bg-black/30">
+          {logs.length === 0 ? (
+            <div className="text-zinc-600 text-center py-8">
+              {server.running ? 'Ожидание логов...' : 'Сервер остановлен. Запустите сервер для просмотра консоли.'}
             </div>
-          ))}
+          ) : (
+            logs.map((log, i) => (
+              <div
+                key={i}
+                className={`py-0.5 console-line ${
+                  log.startsWith('[ERROR]') ? 'text-red-400' :
+                  log.startsWith('>') ? 'text-cyan-400' :
+                  log.includes('Warning') ? 'text-yellow-400' :
+                  log.includes('Error') ? 'text-red-400' :
+                  log.includes('[GMOD]') ? 'text-blue-400' :
+                  log.includes('[SteamCMD]') ? 'text-purple-400' :
+                  log.includes('[SERVER]') ? 'text-green-400' :
+                  'text-zinc-300'
+                }`}
+              >
+                {log}
+              </div>
+            ))
+          )}
+          <div ref={logsEndRef} />
         </div>
-        
-        <div className="border-t border-gray-700 p-4">
-          <div className="flex gap-2">
+
+        <div className="p-4 border-t border-zinc-800/50 bg-zinc-900/50">
+          <div className="flex gap-3">
+            <span className="text-green-400 font-mono flex items-center">❯</span>
             <input
+              ref={inputRef}
               type="text"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendCommand()}
-              placeholder="Введите команду..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+              onKeyDown={handleKeyDown}
+              placeholder={server.running ? "Введите команду..." : "Сервер остановлен"}
+              disabled={!server.running}
+              className="flex-1 bg-transparent border-none outline-none text-white font-mono placeholder:text-zinc-600"
             />
-            <button 
-              onClick={handleSendCommand}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2"
+            <button
+              onClick={handleSend}
+              disabled={!server.running || !command.trim()}
+              className="px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <Send className="w-5 h-5" />
               Отправить
             </button>
-          </div>
-          <div className="mt-2 flex gap-2">
-            {['status', 'help', 'changelevel gm_construct', 'say Hello!'].map((cmd) => (
-              <button
-                key={cmd}
-                onClick={() => setCommand(cmd)}
-                className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1 rounded transition"
-              >
-                {cmd}
-              </button>
-            ))}
           </div>
         </div>
       </div>
