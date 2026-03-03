@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Server } from '../App';
-import { api } from '../api';
 
 interface Props {
   server: Server | null;
@@ -8,7 +7,7 @@ interface Props {
 }
 
 export function Settings({ server, onUpdate }: Props) {
-  const [config, setConfig] = useState({
+  const [settings, setSettings] = useState({
     name: '',
     hostname: '',
     port: 27015,
@@ -21,14 +20,14 @@ export function Settings({ server, onUpdate }: Props) {
     gslt: '',
     workshopCollection: '',
     fastdl: '',
-    loadingUrl: '',
+    loadingUrl: ''
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (server) {
-      setConfig({
+      setSettings({
         name: server.name || '',
         hostname: server.hostname || server.name || '',
         port: server.port || 27015,
@@ -41,7 +40,7 @@ export function Settings({ server, onUpdate }: Props) {
         gslt: server.gslt || '',
         workshopCollection: server.workshopCollection || '',
         fastdl: server.fastdl || '',
-        loadingUrl: server.loadingUrl || '',
+        loadingUrl: server.loadingUrl || ''
       });
     }
   }, [server]);
@@ -51,12 +50,20 @@ export function Settings({ server, onUpdate }: Props) {
     
     setSaving(true);
     try {
-      await api.updateServer(server.id, config);
-      onUpdate();
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      const res = await fetch(`/api/servers/${server.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+        onUpdate();
+      }
     } catch (e) {
       console.error(e);
+      alert('Ошибка сохранения настроек');
     } finally {
       setSaving(false);
     }
@@ -64,251 +71,218 @@ export function Settings({ server, onUpdate }: Props) {
 
   if (!server) {
     return (
-      <div className="animate-fade-in flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="text-6xl mb-4">⚙️</div>
-          <h3 className="text-xl font-semibold text-white mb-2">Выберите сервер</h3>
-          <p className="text-zinc-500">Выберите сервер для настройки</p>
-        </div>
+      <div className="animate-fade-in flex flex-col items-center justify-center h-full">
+        <div className="text-7xl mb-6">⚙️</div>
+        <h2 className="text-2xl font-bold text-white mb-3">Настройки</h2>
+        <p className="text-zinc-500">Выберите сервер для настройки</p>
       </div>
     );
   }
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-10">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Настройки</h1>
-          <p className="text-zinc-500">{server.name}</p>
+          <h1 className="text-4xl font-bold text-white mb-2">Настройки</h1>
+          <p className="text-zinc-500 text-lg">{server.name}</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`px-6 py-3 rounded-xl font-medium text-white transition-all ${
-            saved
-              ? 'bg-green-600'
-              : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90'
-          } disabled:opacity-50`}
-        >
-          {saving ? '⏳ Сохранение...' : saved ? '✅ Сохранено!' : '💾 Сохранить'}
+        <button onClick={handleSave} disabled={saving} className="btn-primary">
+          {saving ? (
+            <>
+              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" style={{ animation: 'spin 1s linear infinite' }} />
+              Сохранение...
+            </>
+          ) : saved ? (
+            <>✅ Сохранено</>
+          ) : (
+            <>💾 Сохранить</>
+          )}
         </button>
       </div>
 
-      <div className="space-y-6">
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-            <span>🖥️</span> Основные настройки
+      <div className="space-y-8">
+        <div className="card p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">🖥️</span>
+            Основные настройки
           </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Название сервера</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Название в панели</label>
               <input
                 type="text"
-                value={config.name}
-                onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                value={settings.name}
+                onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+                className="input-field"
                 placeholder="Мой GMod Сервер"
-                className="w-full"
               />
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Hostname (в игре)</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Hostname (отображается в игре)</label>
               <input
                 type="text"
-                value={config.hostname}
-                onChange={(e) => setConfig({ ...config, hostname: e.target.value })}
-                placeholder="[RU] Best DarkRP Server"
-                className="w-full"
+                value={settings.hostname}
+                onChange={(e) => setSettings({ ...settings, hostname: e.target.value })}
+                className="input-field"
+                placeholder="[RU] Awesome GMod Server"
               />
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Порт</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Порт</label>
               <input
                 type="number"
-                value={config.port}
-                onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value) || 27015 })}
-                placeholder="27015"
-                className="w-full"
+                value={settings.port}
+                onChange={(e) => setSettings({ ...settings, port: parseInt(e.target.value) || 27015 })}
+                className="input-field"
               />
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Макс. игроков</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Максимум игроков</label>
               <input
                 type="number"
-                value={config.maxPlayers}
-                onChange={(e) => setConfig({ ...config, maxPlayers: parseInt(e.target.value) || 32 })}
-                placeholder="32"
-                className="w-full"
+                value={settings.maxPlayers}
+                onChange={(e) => setSettings({ ...settings, maxPlayers: parseInt(e.target.value) || 32 })}
+                className="input-field"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Gamemode</label>
-              <input
-                type="text"
-                value={config.gamemode}
-                onChange={(e) => setConfig({ ...config, gamemode: e.target.value })}
-                placeholder="sandbox, darkrp, ttt, murder..."
-                className="w-full"
-              />
-              <p className="text-xs text-zinc-600 mt-1">sandbox, darkrp, ttt, murder, prophunt, zombiesurvival...</p>
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Карта</label>
-              <input
-                type="text"
-                value={config.map}
-                onChange={(e) => setConfig({ ...config, map: e.target.value })}
-                placeholder="gm_flatgrass, gm_construct..."
-                className="w-full"
-              />
-              <p className="text-xs text-zinc-600 mt-1">gm_flatgrass, gm_construct, rp_downtown_v4c...</p>
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Tickrate</label>
-              <input
-                type="number"
-                value={config.tickrate}
-                onChange={(e) => setConfig({ ...config, tickrate: parseInt(e.target.value) || 66 })}
-                placeholder="66"
-                className="w-full"
-              />
-              <p className="text-xs text-zinc-600 mt-1">Рекомендуется: 33, 66, 100</p>
             </div>
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-            <span>🔐</span> Безопасность
+        <div className="card p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">🎮</span>
+            Игровые настройки
           </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">RCON Пароль</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Gamemode</label>
               <input
-                type="password"
-                value={config.rconPassword}
-                onChange={(e) => setConfig({ ...config, rconPassword: e.target.value })}
-                placeholder="Пароль для RCON доступа"
-                className="w-full"
+                type="text"
+                value={settings.gamemode}
+                onChange={(e) => setSettings({ ...settings, gamemode: e.target.value })}
+                className="input-field"
+                placeholder="sandbox, darkrp, ttt, murder, prophunt..."
               />
-              <p className="text-xs text-zinc-600 mt-1">Пароль для удаленного управления</p>
+              <p className="text-xs text-zinc-600 mt-2">Введите название gamemode</p>
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Пароль сервера</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Стартовая карта</label>
               <input
-                type="password"
-                value={config.svPassword}
-                onChange={(e) => setConfig({ ...config, svPassword: e.target.value })}
-                placeholder="Пароль для входа"
-                className="w-full"
+                type="text"
+                value={settings.map}
+                onChange={(e) => setSettings({ ...settings, map: e.target.value })}
+                className="input-field"
+                placeholder="gm_flatgrass, gm_construct, rp_downtown..."
               />
-              <p className="text-xs text-zinc-600 mt-1">Оставьте пустым для публичного сервера</p>
+              <p className="text-xs text-zinc-600 mt-2">Введите название карты</p>
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Tickrate</label>
+              <input
+                type="number"
+                value={settings.tickrate}
+                onChange={(e) => setSettings({ ...settings, tickrate: parseInt(e.target.value) || 66 })}
+                className="input-field"
+                placeholder="33, 66, 100, 128"
+              />
+              <p className="text-xs text-zinc-600 mt-2">33-128, рекомендуется 66</p>
             </div>
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-            <span>🎮</span> Steam & Workshop
+        <div className="card p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">🔒</span>
+            Безопасность
           </h2>
           
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">GSLT Token</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">RCON пароль</label>
+              <input
+                type="password"
+                value={settings.rconPassword}
+                onChange={(e) => setSettings({ ...settings, rconPassword: e.target.value })}
+                className="input-field"
+                placeholder="Пароль для удаленного управления"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Пароль сервера</label>
+              <input
+                type="password"
+                value={settings.svPassword}
+                onChange={(e) => setSettings({ ...settings, svPassword: e.target.value })}
+                className="input-field"
+                placeholder="Оставьте пустым для публичного сервера"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">🔧</span>
+            Steam & Workshop
+          </h2>
+          
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">GSLT Token</label>
               <input
                 type="text"
-                value={config.gslt}
-                onChange={(e) => setConfig({ ...config, gslt: e.target.value })}
-                placeholder="Ваш Game Server Login Token"
-                className="w-full"
+                value={settings.gslt}
+                onChange={(e) => setSettings({ ...settings, gslt: e.target.value })}
+                className="input-field"
+                placeholder="Game Server Login Token"
               />
-              <p className="text-xs text-zinc-600 mt-1">
-                Получите на{' '}
-                <a href="https://steamcommunity.com/dev/managegameservers" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                  steamcommunity.com/dev/managegameservers
-                </a>
+              <p className="text-xs text-zinc-600 mt-2">
+                Получить токен: <a href="https://steamcommunity.com/dev/managegameservers" target="_blank" className="text-blue-400 hover:underline">steamcommunity.com/dev/managegameservers</a>
               </p>
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Workshop Collection ID</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Workshop Collection ID</label>
               <input
                 type="text"
-                value={config.workshopCollection}
-                onChange={(e) => setConfig({ ...config, workshopCollection: e.target.value })}
-                placeholder="1234567890"
-                className="w-full"
+                value={settings.workshopCollection}
+                onChange={(e) => setSettings({ ...settings, workshopCollection: e.target.value })}
+                className="input-field"
+                placeholder="ID коллекции Workshop для автоскачивания"
               />
-              <p className="text-xs text-zinc-600 mt-1">ID коллекции для автозагрузки аддонов</p>
             </div>
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-            <span>⚡</span> FastDL & Loading Screen
+        <div className="card p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">⚡</span>
+            FastDL & Loading
           </h2>
           
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">FastDL URL</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">FastDL URL</label>
               <input
                 type="text"
-                value={config.fastdl}
-                onChange={(e) => setConfig({ ...config, fastdl: e.target.value })}
-                placeholder="https://fastdl.example.com/gmod/"
-                className="w-full"
+                value={settings.fastdl}
+                onChange={(e) => setSettings({ ...settings, fastdl: e.target.value })}
+                className="input-field"
+                placeholder="https://fastdl.yourserver.com/"
               />
-              <p className="text-xs text-zinc-600 mt-1">URL для быстрой загрузки контента</p>
             </div>
-
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Loading Screen URL</label>
+              <label className="block text-sm text-zinc-400 mb-2 font-medium">Loading Screen URL</label>
               <input
                 type="text"
-                value={config.loadingUrl}
-                onChange={(e) => setConfig({ ...config, loadingUrl: e.target.value })}
-                placeholder="https://loading.example.com/"
-                className="w-full"
+                value={settings.loadingUrl}
+                onChange={(e) => setSettings({ ...settings, loadingUrl: e.target.value })}
+                className="input-field"
+                placeholder="https://yoursite.com/loading"
               />
-              <p className="text-xs text-zinc-600 mt-1">URL экрана загрузки</p>
             </div>
           </div>
-        </div>
-
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <span>📋</span> Строка подключения
-          </h2>
-          
-          <div className="bg-black/30 rounded-xl p-4 font-mono text-sm">
-            <span className="text-zinc-500">connect</span>{' '}
-            <span className="text-cyan-400">{window.location.hostname}:{config.port}</span>
-            {config.svPassword && (
-              <>
-                <span className="text-zinc-500">; password</span>{' '}
-                <span className="text-yellow-400">{config.svPassword}</span>
-              </>
-            )}
-          </div>
-          
-          <button
-            onClick={() => {
-              const cmd = `connect ${window.location.hostname}:${config.port}${config.svPassword ? `; password ${config.svPassword}` : ''}`;
-              navigator.clipboard.writeText(cmd);
-            }}
-            className="mt-3 px-4 py-2 bg-zinc-800 rounded-lg text-zinc-300 hover:bg-zinc-700 text-sm"
-          >
-            📋 Копировать
-          </button>
         </div>
       </div>
     </div>

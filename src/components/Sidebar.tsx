@@ -19,31 +19,33 @@ const menuItems: { id: Page; label: string; icon: string }[] = [
 ];
 
 export function Sidebar({ currentPage, onNavigate, servers, selectedServer, onSelectServer }: Props) {
+  const runningCount = servers.filter(s => s.running).length;
+
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-72 glass border-r border-zinc-800/50 flex flex-col z-50">
-      <div className="p-6 border-b border-zinc-800/50">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xl">
+    <aside className="fixed left-0 top-0 bottom-0 w-80 bg-gradient-to-b from-[#1a1a2e] to-[#16162a] border-r border-white/5 flex flex-col z-50">
+      <div className="p-6 border-b border-white/5">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-2xl shadow-lg shadow-purple-500/20">
             🎮
           </div>
           <div>
-            <h1 className="font-bold text-lg text-white">GMod Panel</h1>
-            <p className="text-xs text-zinc-500">Управление серверами</p>
+            <h1 className="font-bold text-xl text-white">GMod Panel</h1>
+            <p className="text-sm text-zinc-500">Game Server Hosting</p>
           </div>
         </div>
       </div>
 
       {servers.length > 0 && (
-        <div className="p-4 border-b border-zinc-800/50">
-          <label className="text-xs text-zinc-500 mb-2 block">Активный сервер</label>
+        <div className="p-5 border-b border-white/5">
+          <label className="text-xs text-zinc-500 uppercase tracking-wider mb-3 block font-semibold">Активный сервер</label>
           <select
             value={selectedServer || ''}
             onChange={(e) => onSelectServer(e.target.value)}
-            className="w-full bg-zinc-900/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm"
+            className="input-field text-sm"
           >
             {servers.map(server => (
               <option key={server.id} value={server.id}>
-                {server.name} {server.running ? '🟢' : '⚫'}
+                {server.running ? '🟢' : '⚫'} {server.name}
               </option>
             ))}
           </select>
@@ -51,34 +53,30 @@ export function Sidebar({ currentPage, onNavigate, servers, selectedServer, onSe
       )}
 
       <nav className="flex-1 p-4 overflow-y-auto">
-        <ul className="space-y-1">
+        <div className="space-y-2">
           {menuItems.map(item => (
-            <li key={item.id}>
-              <button
-                onClick={() => onNavigate(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                  currentPage === item.id
-                    ? 'bg-gradient-to-r from-blue-600/20 to-purple-600/20 text-white border border-blue-500/30'
-                    : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-white'
-                }`}
-              >
-                <span className="text-lg">{item.icon}</span>
-                <span className="font-medium">{item.label}</span>
-              </button>
-            </li>
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className={`sidebar-item w-full ${currentPage === item.id ? 'active' : ''}`}
+            >
+              <span className="text-xl">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
           ))}
-        </ul>
+        </div>
       </nav>
 
-      <div className="p-4 border-t border-zinc-800/50">
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-zinc-400">Система</span>
+      <div className="p-5 border-t border-white/5">
+        <div className="card-static p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-zinc-400">Статус системы</span>
+            <div className="status-online" />
           </div>
-          <p className="text-xs text-zinc-500">
-            Railway Node.js Environment
-          </p>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-zinc-500">Серверов онлайн</span>
+            <span className="text-white font-semibold">{runningCount} / {servers.length}</span>
+          </div>
         </div>
       </div>
     </aside>

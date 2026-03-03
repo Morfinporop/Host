@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { Server } from '../App';
-import { api } from '../api';
-import { useWebSocket } from '../hooks/useWebSocket';
 
 interface Props {
   server: Server | null;
@@ -10,51 +8,114 @@ interface Props {
 
 export function Install({ server, onComplete }: Props) {
   const [installing, setInstalling] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  
-  const { logs } = useWebSocket(server?.id || null);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
   useEffect(() => {
-    const downloadLogs = logs.filter(l => l.includes('%') || l.includes('downloading') || l.includes('Downloading'));
-    if (downloadLogs.length > 0) {
-      const match = downloadLogs[downloadLogs.length - 1].match(/(\d+)%/);
-      if (match) {
-        setProgress(parseInt(match[1]));
-      }
-    }
-    if (logs.some(l => l.includes('completed successfully') || l.includes('Success'))) {
-      setProgress(100);
-      setInstalling(false);
-      onComplete();
-    }
-  }, [logs, onComplete]);
+    if (!server || !installing) return;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?server=${server.id}`);
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'install') {
+          setLogs(prev => [...prev, msg.data]);
+          
+          if (msg.data.includes('Downloading')) {
+            setProgress(prev => Math.min(prev + 2, 90));
+          }
+          if (msg.data.includes('validating') || msg.data.includes('Validating')) {
+            setProgress(80);
+          }
+          if (msg.data.includes('completed') || msg.data.includes('Success')) {
+            setProgress(100);
+          }
+        }
+      } catch (e) {}
+    };
+
+    return () => ws.close();
+  }, [server?.id, installing]);
 
   const startInstall = async () => {
     if (!server) return;
     
     setInstalling(true);
-    setProgress(0);
-    
+    setLogs([]);
+    setProgress(5);
+
     try {
-      await api.installServer(server.id);
+      await fetch(`/api/servers/${server.id}/install`, {
+        method: 'POST'
+      });
+      onComplete();
     } catch (e) {
       console.error(e);
-      setInstalling(false);
+      setLogs(prev => [...prev, '[ERROR] Installation failed']);
     }
   };
 
   if (!server) {
     return (
-      <div className="animate-fade-in flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="text-6xl mb-4">📥</div>
-          <h3 className="text-xl font-semibold text-white mb-2">Выберите сервер</h3>
-          <p className="text-zinc-500">Выберите сервер для установки</p>
+      <div className="animate-fade-in flex flex-col items-center justify-center h-full">
+        <div className="text-7xl mb-6">📥</div>
+        <h2 className="text-2xl font-bold text-white mb-3">Установка</h2>
+        <p className="text-zinc-500">Выберите сервер для установки</p>
+      </div>
+    );
+  }
+
+  if (server.installed && !installing) {
+    return (
+      <div className="animate-fade-in">
+        <div className="mb-10">
+          <h1 className="text-4xl font-bold text-white mb-2">Установка</h1>
+          <p className="text-zinc-500 text-lg">{server.name}</p>
+        </div>
+
+        <div className="card p-10 text-center">
+          <div className="w-24 h-24 rounded-3xl bg-green-500/20 flex items-center justify-center text-5xl mx-auto mb-6">
+            ✅
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-3">Сервер установлен</h2>
+          <p className="text-zinc-500 mb-8 max-w-md mx-auto">
+            Garry's Mod Dedicated Server уже установлен и готов к запуску
+          </p>
+          
+          <div className="flex justify-center gap-4">
+            <button onClick={startInstall} className="btn-secondary">
+              🔄 Переустановить / Обновить
+            </button>
+          </div>
+        </div>
+
+        <div className="card p-6 mt-6">
+          <h3 className="text-lg font-bold text-white mb-4">Информация об установке</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-zinc-500">App ID</p>
+              <p className="text-white font-medium">4020</p>
+            </div>
+            <div>
+              <p className="text-zinc-500">Игра</p>
+              <p className="text-white font-medium">Garry's Mod DS</p>
+            </div>
+            <div>
+              <p className="text-zinc-500">Статус</p>
+              <p className="text-green-400 font-medium">Установлен</p>
+            </div>
+            <div>
+              <p className="text-zinc-500">Путь</p>
+              <p className="text-white font-medium truncate">/servers/{server.id}</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -62,163 +123,94 @@ export function Install({ server, onComplete }: Props) {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Установка сервера</h1>
-        <p className="text-zinc-500">{server.name}</p>
+      <div className="mb-10">
+        <h1 className="text-4xl font-bold text-white mb-2">Установка</h1>
+        <p className="text-zinc-500 text-lg">{server.name}</p>
       </div>
 
-      <div className="glass rounded-2xl p-6 border border-zinc-800/50 mb-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ${
-            server.installed ? 'bg-green-500/20' : 'bg-blue-500/20'
-          }`}>
-            {server.installed ? '✅' : '📦'}
+      {!installing ? (
+        <div className="card p-10 text-center">
+          <div className="w-24 h-24 rounded-3xl bg-blue-500/20 flex items-center justify-center text-5xl mx-auto mb-6">
+            📥
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-semibold text-white">
-              {server.installed ? 'Сервер установлен' : 'Garry\'s Mod Dedicated Server'}
-            </h2>
-            <p className="text-zinc-500">
-              {server.installed 
-                ? 'Сервер готов к запуску. Вы можете переустановить или обновить сервер.'
-                : 'Установка через SteamCMD. Требуется ~8 GB свободного места.'
-              }
-            </p>
-          </div>
-          <button
-            onClick={startInstall}
-            disabled={installing}
-            className={`px-6 py-3 rounded-xl font-medium text-white transition-all ${
-              installing
-                ? 'bg-zinc-700 cursor-not-allowed'
-                : server.installed
-                  ? 'bg-yellow-600 hover:bg-yellow-500'
-                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90'
-            }`}
-          >
-            {installing ? '⏳ Установка...' : server.installed ? '🔄 Обновить' : '📥 Установить'}
+          <h2 className="text-2xl font-bold text-white mb-3">Установить Garry's Mod Server</h2>
+          <p className="text-zinc-500 mb-8 max-w-lg mx-auto">
+            Будет скачан и установлен Garry's Mod Dedicated Server через SteamCMD. 
+            Это может занять 10-30 минут в зависимости от скорости интернета.
+          </p>
+          
+          <button onClick={startInstall} className="btn-primary text-lg px-10">
+            <span>🚀</span>
+            Начать установку
           </button>
-        </div>
 
-        {(installing || logs.length > 0) && (
-          <>
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-zinc-400">Прогресс установки</span>
-                <span className="text-sm text-zinc-400">{progress}%</span>
+          <div className="mt-10 p-6 bg-black/20 rounded-xl text-left max-w-lg mx-auto">
+            <h4 className="font-semibold text-white mb-3">Что будет установлено:</h4>
+            <ul className="space-y-2 text-sm text-zinc-400">
+              <li className="flex items-center gap-2">
+                <span className="text-green-400">✓</span>
+                SteamCMD (если не установлен)
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-green-400">✓</span>
+                Garry's Mod Dedicated Server (App ID: 4020)
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-green-400">✓</span>
+                Базовая конфигурация server.cfg
+              </li>
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-white">Установка...</h2>
+              <p className="text-zinc-500 text-sm mt-1">Пожалуйста, не закрывайте страницу</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-white">{progress}%</div>
+              <div className="text-sm text-zinc-500">завершено</div>
+            </div>
+          </div>
+
+          <div className="progress-bar mb-6" style={{ height: '12px' }}>
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+
+          <div className="bg-black/30 rounded-xl p-4 h-80 overflow-y-auto console-text">
+            {logs.map((log, i) => (
+              <div
+                key={i}
+                className={`py-0.5 ${
+                  log.includes('ERROR') || log.includes('error') ? 'text-red-400' :
+                  log.includes('Success') || log.includes('completed') ? 'text-green-400' :
+                  log.includes('Downloading') ? 'text-blue-400' :
+                  log.includes('Validating') ? 'text-yellow-400' :
+                  'text-zinc-400'
+                }`}
+              >
+                {log}
               </div>
-              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
+            ))}
+            {logs.length === 0 && (
+              <div className="text-zinc-600">Запуск установки...</div>
+            )}
+            <div ref={logsEndRef} />
+          </div>
+
+          {progress === 100 && (
+            <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-4">
+              <span className="text-3xl">✅</span>
+              <div>
+                <p className="text-green-400 font-semibold">Установка завершена!</p>
+                <p className="text-zinc-400 text-sm">Теперь вы можете запустить сервер</p>
               </div>
             </div>
-
-            <div className="bg-black/30 rounded-xl p-4 max-h-96 overflow-y-auto font-mono text-sm">
-              {logs.map((log, i) => (
-                <div
-                  key={i}
-                  className={`py-0.5 ${
-                    log.includes('[ERROR]') || log.includes('Error') ? 'text-red-400' :
-                    log.includes('[GMOD]') ? 'text-blue-400' :
-                    log.includes('[SteamCMD]') ? 'text-purple-400' :
-                    log.includes('Success') || log.includes('completed') ? 'text-green-400' :
-                    log.includes('%') ? 'text-cyan-400' :
-                    'text-zinc-400'
-                  }`}
-                >
-                  {log}
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <span>ℹ️</span> Информация
-          </h3>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">App ID</span>
-              <span className="text-zinc-300">4020</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Размер</span>
-              <span className="text-zinc-300">~8 GB</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Время установки</span>
-              <span className="text-zinc-300">10-30 минут</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Статус</span>
-              <span className={server.installed ? 'text-green-400' : 'text-yellow-400'}>
-                {server.installed ? 'Установлен' : 'Не установлен'}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
-
-        <div className="glass rounded-2xl p-6 border border-zinc-800/50">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <span>📋</span> Процесс установки
-          </h3>
-          <ol className="space-y-3 text-sm">
-            <li className="flex items-start gap-3">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                installing || server.installed ? 'bg-green-500/20 text-green-400' : 'bg-zinc-800 text-zinc-500'
-              }`}>1</span>
-              <span className="text-zinc-400">Загрузка SteamCMD</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                (installing && progress > 10) || server.installed ? 'bg-green-500/20 text-green-400' : 'bg-zinc-800 text-zinc-500'
-              }`}>2</span>
-              <span className="text-zinc-400">Авторизация (anonymous)</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                (installing && progress > 20) || server.installed ? 'bg-green-500/20 text-green-400' : 'bg-zinc-800 text-zinc-500'
-              }`}>3</span>
-              <span className="text-zinc-400">Загрузка файлов сервера</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                server.installed ? 'bg-green-500/20 text-green-400' : 'bg-zinc-800 text-zinc-500'
-              }`}>4</span>
-              <span className="text-zinc-400">Создание конфигурации</span>
-            </li>
-          </ol>
-        </div>
-      </div>
-
-      <div className="mt-6 glass rounded-2xl p-6 border border-zinc-800/50">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <span>⚡</span> После установки
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="bg-zinc-800/30 rounded-xl p-4">
-            <div className="text-2xl mb-2">⚙️</div>
-            <div className="font-medium text-white mb-1">Настройте сервер</div>
-            <div className="text-zinc-500">Укажите gamemode, карту и другие параметры</div>
-          </div>
-          <div className="bg-zinc-800/30 rounded-xl p-4">
-            <div className="text-2xl mb-2">🔑</div>
-            <div className="font-medium text-white mb-1">Получите GSLT</div>
-            <div className="text-zinc-500">Нужен для отображения в списке серверов</div>
-          </div>
-          <div className="bg-zinc-800/30 rounded-xl p-4">
-            <div className="text-2xl mb-2">▶️</div>
-            <div className="font-medium text-white mb-1">Запустите сервер</div>
-            <div className="text-zinc-500">И начните играть!</div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

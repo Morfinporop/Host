@@ -1,10 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Server } from '../App';
-import { api } from '../api';
-
-interface Props {
-  server: Server | null;
-}
 
 interface FileItem {
   name: string;
@@ -13,22 +8,31 @@ interface FileItem {
   modified: string;
 }
 
+interface Props {
+  server: Server | null;
+}
+
 export function FileManager({ server }: Props) {
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [editingFile, setEditingFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState('');
-  const [creating, setCreating] = useState<'file' | 'directory' | null>(null);
+  const [editingFile, setEditingFile] = useState<{ path: string; content: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
   const [newName, setNewName] = useState('');
 
-  const loadFiles = async () => {
+  const loadFiles = async (path: string = '') => {
     if (!server) return;
+    
     setLoading(true);
     try {
-      const data = await api.getFiles(server.id, currentPath);
-      if (data.type === 'directory') {
-        setItems(data.items);
+      const res = await fetch(`/api/servers/${server.id}/files?path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.type === 'directory') {
+          setItems(data.items);
+          setCurrentPath(path);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -38,18 +42,24 @@ export function FileManager({ server }: Props) {
   };
 
   useEffect(() => {
-    loadFiles();
-  }, [server?.id, currentPath]);
+    if (server) {
+      loadFiles('');
+    }
+  }, [server?.id]);
 
-  const openFile = async (item: FileItem) => {
+  const openItem = async (item: FileItem) => {
+    const itemPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+    
     if (item.type === 'directory') {
-      setCurrentPath(currentPath ? `${currentPath}/${item.name}` : item.name);
+      loadFiles(itemPath);
     } else {
       try {
-        const data = await api.getFiles(server!.id, currentPath ? `${currentPath}/${item.name}` : item.name);
-        if (data.type === 'file') {
-          setFileContent(data.content);
-          setEditingFile(currentPath ? `${currentPath}/${item.name}` : item.name);
+        const res = await fetch(`/api/servers/${server!.id}/files?path=${encodeURIComponent(itemPath)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.type === 'file') {
+            setEditingFile({ path: itemPath, content: data.content });
+          }
         }
       } catch (e) {
         console.error(e);
@@ -60,14 +70,42 @@ export function FileManager({ server }: Props) {
   const goBack = () => {
     const parts = currentPath.split('/');
     parts.pop();
-    setCurrentPath(parts.join('/'));
+    loadFiles(parts.join('/'));
   };
 
   const saveFile = async () => {
     if (!editingFile || !server) return;
+    
+    setSaving(true);
     try {
-      await api.updateFile(server.id, editingFile, fileContent);
+      await fetch(`/api/servers/${server.id}/files`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: editingFile.path, content: editingFile.content })
+      });
       setEditingFile(null);
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сохранения файла');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createItem = async () => {
+    if (!newName.trim() || !server) return;
+    
+    const itemPath = currentPath ? `${currentPath}/${newName}` : newName;
+    
+    try {
+      await fetch(`/api/servers/${server.id}/files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: itemPath, content: '', isDirectory: creating === 'folder' })
+      });
+      setCreating(null);
+      setNewName('');
+      loadFiles(currentPath);
     } catch (e) {
       console.error(e);
     }
@@ -75,42 +113,17 @@ export function FileManager({ server }: Props) {
 
   const deleteItem = async (item: FileItem) => {
     if (!confirm(`Удалить ${item.name}?`)) return;
-    if (!server) return;
+    
+    const itemPath = currentPath ? `${currentPath}/${item.name}` : item.name;
     
     try {
-      const path = currentPath ? `${currentPath}/${item.name}` : item.name;
-      await api.deleteFile(server.id, path);
-      loadFiles();
+      await fetch(`/api/servers/${server!.id}/files?path=${encodeURIComponent(itemPath)}`, {
+        method: 'DELETE'
+      });
+      loadFiles(currentPath);
     } catch (e) {
       console.error(e);
     }
-  };
-
-  const createItem = async () => {
-    if (!newName || !server || !creating) return;
-    
-    try {
-      const path = currentPath ? `${currentPath}/${newName}` : newName;
-      await api.createFile(server.id, path, '', creating === 'directory');
-      setCreating(null);
-      setNewName('');
-      loadFiles();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !server) return;
-    
-    try {
-      await api.uploadFile(server.id, currentPath, file);
-      loadFiles();
-    } catch (err) {
-      console.error(err);
-    }
-    e.target.value = '';
   };
 
   const formatSize = (bytes: number) => {
@@ -119,26 +132,27 @@ export function FileManager({ server }: Props) {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   };
 
-  const getIcon = (item: FileItem) => {
-    if (item.type === 'directory') return '📁';
-    if (item.name.endsWith('.lua')) return '📜';
-    if (item.name.endsWith('.cfg')) return '⚙️';
-    if (item.name.endsWith('.txt')) return '📄';
-    if (item.name.endsWith('.json')) return '📋';
-    if (item.name.endsWith('.vmt') || item.name.endsWith('.vtf')) return '🖼️';
-    if (item.name.endsWith('.mdl')) return '🎭';
-    if (item.name.endsWith('.wav') || item.name.endsWith('.mp3')) return '🔊';
-    return '📄';
+  const getFileIcon = (name: string, type: string) => {
+    if (type === 'directory') return '📁';
+    const ext = name.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'lua': return '🟡';
+      case 'txt': return '📄';
+      case 'cfg': return '⚙️';
+      case 'json': return '📋';
+      case 'mdl': return '🎭';
+      case 'vtf': case 'vmt': return '🖼️';
+      case 'wav': case 'mp3': return '🔊';
+      default: return '📄';
+    }
   };
 
   if (!server) {
     return (
-      <div className="animate-fade-in flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="text-6xl mb-4">📁</div>
-          <h3 className="text-xl font-semibold text-white mb-2">Выберите сервер</h3>
-          <p className="text-zinc-500">Выберите сервер для управления файлами</p>
-        </div>
+      <div className="animate-fade-in flex flex-col items-center justify-center h-full">
+        <div className="text-7xl mb-6">📁</div>
+        <h2 className="text-2xl font-bold text-white mb-3">Файловый менеджер</h2>
+        <p className="text-zinc-500">Выберите сервер для просмотра файлов</p>
       </div>
     );
   }
@@ -148,33 +162,24 @@ export function FileManager({ server }: Props) {
       <div className="animate-fade-in h-full flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Редактор</h1>
-            <p className="text-zinc-500">{editingFile}</p>
+            <h1 className="text-2xl font-bold text-white mb-1">Редактирование файла</h1>
+            <p className="text-zinc-500">{editingFile.path}</p>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => setEditingFile(null)}
-              className="px-4 py-2 bg-zinc-800 rounded-xl text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <button onClick={() => setEditingFile(null)} className="btn-secondary">
               Отмена
             </button>
-            <button
-              onClick={saveFile}
-              className="px-4 py-2 bg-green-600 rounded-xl text-white hover:bg-green-500 transition-colors"
-            >
-              💾 Сохранить
+            <button onClick={saveFile} disabled={saving} className="btn-primary">
+              {saving ? 'Сохранение...' : 'Сохранить'}
             </button>
           </div>
         </div>
-
-        <div className="flex-1 glass rounded-2xl border border-zinc-800/50 overflow-hidden">
-          <textarea
-            value={fileContent}
-            onChange={(e) => setFileContent(e.target.value)}
-            className="w-full h-full p-4 bg-transparent resize-none font-mono text-sm text-zinc-300 outline-none"
-            spellCheck={false}
-          />
-        </div>
+        <textarea
+          value={editingFile.content}
+          onChange={(e) => setEditingFile({ ...editingFile, content: e.target.value })}
+          className="flex-1 input-field console-text resize-none"
+          spellCheck={false}
+        />
       </div>
     );
   }
@@ -183,121 +188,88 @@ export function FileManager({ server }: Props) {
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Файлы</h1>
-          <p className="text-zinc-500">{server.name}</p>
+          <h1 className="text-4xl font-bold text-white mb-2">Файлы</h1>
+          <p className="text-zinc-500 text-lg">{server.name}</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setCreating('directory')}
-            className="px-4 py-2 bg-zinc-800 rounded-xl text-zinc-300 hover:bg-zinc-700 transition-colors text-sm"
-          >
-            📁 Папка
+        <div className="flex gap-3">
+          <button onClick={() => setCreating('folder')} className="btn-secondary">
+            📁 Новая папка
           </button>
-          <button
-            onClick={() => setCreating('file')}
-            className="px-4 py-2 bg-zinc-800 rounded-xl text-zinc-300 hover:bg-zinc-700 transition-colors text-sm"
-          >
-            📄 Файл
+          <button onClick={() => setCreating('file')} className="btn-primary">
+            📄 Новый файл
           </button>
-          <label className="px-4 py-2 bg-blue-600 rounded-xl text-white hover:bg-blue-500 transition-colors text-sm cursor-pointer">
-            📤 Загрузить
-            <input type="file" className="hidden" onChange={handleUpload} />
-          </label>
         </div>
       </div>
 
       {creating && (
-        <div className="mb-4 glass rounded-xl p-4 border border-zinc-800/50 flex gap-3">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder={creating === 'directory' ? 'Имя папки' : 'Имя файла'}
-            className="flex-1"
-            autoFocus
-          />
-          <button
-            onClick={createItem}
-            className="px-4 py-2 bg-green-600 rounded-lg text-white hover:bg-green-500"
-          >
-            Создать
-          </button>
-          <button
-            onClick={() => { setCreating(null); setNewName(''); }}
-            className="px-4 py-2 bg-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-600"
-          >
-            Отмена
-          </button>
+        <div className="modal-overlay" onClick={() => setCreating(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold text-white mb-4">
+              {creating === 'folder' ? 'Новая папка' : 'Новый файл'}
+            </h2>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={creating === 'folder' ? 'Название папки' : 'Название файла'}
+              className="input-field mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setCreating(null)} className="btn-secondary flex-1">
+                Отмена
+              </button>
+              <button onClick={createItem} className="btn-primary flex-1">
+                Создать
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="glass rounded-2xl border border-zinc-800/50 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800/50 flex items-center gap-2 bg-zinc-900/50">
+      <div className="card-static overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/5 flex items-center gap-3">
           <button
             onClick={goBack}
             disabled={!currentPath}
-            className="p-2 rounded-lg hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={`p-2 rounded-lg transition-colors ${currentPath ? 'hover:bg-white/5 text-white' : 'text-zinc-600'}`}
           >
             ⬅️
           </button>
-          <div className="flex items-center gap-1 text-sm">
-            <span className="text-zinc-500">📂</span>
-            <span className="text-zinc-400">/</span>
-            {currentPath.split('/').filter(Boolean).map((part, i, arr) => (
-              <span key={i} className="flex items-center gap-1">
-                <span className="text-zinc-300">{part}</span>
-                {i < arr.length - 1 && <span className="text-zinc-600">/</span>}
-              </span>
-            ))}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-zinc-500">📁</span>
+            <span className="text-white font-medium">{currentPath || '/'}</span>
           </div>
-          <button
-            onClick={loadFiles}
-            className="ml-auto p-2 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
+          <button onClick={() => loadFiles(currentPath)} className="ml-auto p-2 rounded-lg hover:bg-white/5 text-zinc-400">
             🔄
           </button>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="p-12 text-center">
+            <div className="w-10 h-10 border-3 border-blue-500/30 border-t-blue-500 rounded-full mx-auto" style={{ animation: 'spin 1s linear infinite' }} />
           </div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">
-            {server.installed ? 'Папка пуста' : 'Сервер не установлен. Перейдите в раздел "Установка".'}
+          <div className="p-12 text-center text-zinc-500">
+            {server.installed ? 'Папка пуста' : 'Сервер не установлен. Установите сервер для доступа к файлам.'}
           </div>
         ) : (
-          <div className="divide-y divide-zinc-800/50">
-            {items.map((item, i) => (
+          <div className="divide-y divide-white/5">
+            {items.map(item => (
               <div
-                key={i}
-                className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-800/30 cursor-pointer transition-colors group"
-                onClick={() => openFile(item)}
+                key={item.name}
+                className="file-item group"
+                onClick={() => openItem(item)}
               >
-                <span className="text-xl">{getIcon(item)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-zinc-200 truncate">{item.name}</div>
-                  <div className="text-xs text-zinc-500">
-                    {item.type === 'file' && formatSize(item.size)}
-                  </div>
-                </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {item.type === 'file' && (
-                    <a
-                      href={api.getDownloadUrl(server.id, currentPath ? `${currentPath}/${item.name}` : item.name)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
-                    >
-                      ⬇️
-                    </a>
-                  )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteItem(item); }}
-                    className="p-1.5 rounded-lg bg-zinc-700 hover:bg-red-600 text-zinc-300"
-                  >
-                    🗑️
-                  </button>
-                </div>
+                <span className="text-xl">{getFileIcon(item.name, item.type)}</span>
+                <span className="flex-1 text-white">{item.name}</span>
+                <span className="text-sm text-zinc-600">{item.type === 'file' ? formatSize(item.size) : ''}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteItem(item); }}
+                  className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-all"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
           </div>
